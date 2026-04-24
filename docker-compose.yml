@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx-server
+    ports:
+      - "8554:8554" # RTSP
+    restart: unless-stopped
+
+  camera-01:
+    image: linuxserver/ffmpeg:latest
+    container_name: mock-camera-01
+    depends_on:
+      - mediamtx
+    volumes:
+      - ./video_assets:/assets:ro
+    command: >
+      -re
+      -stream_loop -1
+      -i /assets/RPM_1.mp4
+      -vf "fps=15,scale=640:480,drawtext=text='%{localtime\:%H\\:%M\\:%S}.%{eif\:1000000*t-1000000*trunc(t)\:d\:6}':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.6:x=10:y=10"
+      -c:v libx264
+      -preset ultrafast
+      -tune zerolatency
+      -c:a copy
+      -f rtsp
+      rtsp://mediamtx:8554/cam_01
+    restart: unless-stopped
+
+  camera-02:
+    image: linuxserver/ffmpeg:latest
+    container_name: mock-camera-02
+    depends_on:
+      - mediamtx
+    volumes:
+      - ./video_assets:/assets:ro
+    command: >
+      -re
+      -stream_loop -1
+      -i /assets/RPM_2.mp4
+      -vf "fps=15,scale=640:480,drawtext=text='%{localtime\:%H\\:%M\\:%S}.%{eif\:1000000*t-1000000*trunc(t)\:d\:6}':fontcolor=yellow:fontsize=24:box=1:boxcolor=black@0.6:x=10:y=10"
+      -c:v libx264
+      -preset ultrafast
+      -tune zerolatency
+      -c:a copy
+      -f rtsp
+      rtsp://mediamtx:8554/cam_02
+    restart: unless-stopped
