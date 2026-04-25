@@ -17,6 +17,5 @@ To do this, you simply need to expand the `docker-compose.yml` file to include a
 ## How to run
 
 1. Ensure you have Docker and Docker Compose installed.
-2. Place your source video files in the `assets/` directory (e.g., `RPM_1.mp4`, `RPM_2.mp4`).
-3. Run `docker-compose up -d` to start the MediaMTX server and the emulated cameras.
-4. Access the streams using a media player like VLC or integrate them into your application (e.g., `rtsp://localhost:8554/cam_01`).
+2. Run `docker-compose up -d` to start the MediaMTX server and the emulated cameras.
+3. Access the streams using a media player like VLC or integrate them into your application (e.g., `rtsp://localhost:8554/cam_01`).
