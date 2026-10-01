@@ -123,16 +123,16 @@ A deployment that was deliberately stopped with `docker compose stop`, or remove
 
 ## Verify all 50 cameras
 
-Run the scripts from the project root. With the default all-interface binding, this on-Pi smoke test checks every endpoint over RTSP/TCP:
-
-```sh
-./scripts/smoke-test.sh
-```
-
-It verifies that `cam_01` through `cam_50` each report H.264 video at 640x480 and 15 fps plus AAC audio. To test the Pi from another LAN machine, copy or clone the repository there and select the Pi explicitly:
+Run the scripts from the project root. With the supplied `.env` binding, this command checks every endpoint over RTSP/TCP from the Pi or another LAN machine:
 
 ```sh
 RTSP_HOST=192.168.0.55 ./scripts/smoke-test.sh
+```
+
+It verifies that `cam_01` through `cam_50` each report H.264 video at 640x480 and 15 fps plus AAC audio. If `CAMERA_BIND_IP` is omitted or set to `0.0.0.0`, an on-Pi test can instead use the scripts' default `127.0.0.1` host:
+
+```sh
+./scripts/smoke-test.sh
 ```
 
 Smoke-test settings can be overridden when diagnosing a slow or remote host:
@@ -150,10 +150,10 @@ SMOKE_PARALLELISM=10 \
 The load test opens one RTSP/TCP stream-copy reader for each of the 50 cameras. Its default duration is 75 seconds, long enough to cross the loop boundary of both source files:
 
 ```sh
-./scripts/load-test.sh
+RTSP_HOST=192.168.0.55 ./scripts/load-test.sh
 ```
 
-From a separate LAN machine, point it at the Pi so the test includes real network egress:
+Run that command from a separate LAN machine when the test should include real network egress. The explicit `75` below is equivalent to the default duration:
 
 ```sh
 RTSP_HOST=192.168.0.55 ./scripts/load-test.sh 75
