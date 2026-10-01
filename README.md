@@ -140,7 +140,7 @@ Smoke-test settings can be overridden when diagnosing a slow or remote host:
 ```sh
 RTSP_HOST=192.168.0.55 \
 RTSP_PORT=8554 \
-SMOKE_TIMEOUT_SECONDS=20 \
+SMOKE_TIMEOUT_SECONDS=30 \
 SMOKE_PARALLELISM=10 \
 ./scripts/smoke-test.sh
 ```

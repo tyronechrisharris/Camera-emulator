@@ -10,7 +10,7 @@ done
 
 export RTSP_HOST="${RTSP_HOST:-127.0.0.1}"
 export RTSP_PORT="${RTSP_PORT:-8554}"
-export SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-15}"
+export SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-30}"
 export SMOKE_PARALLELISM="${SMOKE_PARALLELISM:-10}"
 
 python3 - <<'PY'
@@ -19,6 +19,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import os
+import statistics
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -86,7 +87,7 @@ def stream_description(stream: dict[str, Any]) -> str:
 
 def probe(path: str) -> ProbeResult:
     url = f"rtsp://{host}:{port}/{path}"
-    command = [
+    stream_command = [
         "ffprobe",
         "-v",
         "error",
@@ -103,7 +104,7 @@ def probe(path: str) -> ProbeResult:
 
     try:
         completed = subprocess.run(
-            command,
+            stream_command,
             check=False,
             capture_output=True,
             text=True,
@@ -132,12 +133,9 @@ def probe(path: str) -> ProbeResult:
     if not isinstance(streams, list):
         return ProbeResult(path, "ffprobe response did not contain a streams list")
 
-    video_ok = any(
+    video_codec_ok = any(
         stream.get("codec_type") == "video"
         and stream.get("codec_name") == "h264"
-        and stream.get("width") == 640
-        and stream.get("height") == 480
-        and stream.get("r_frame_rate") == "15/1"
         for stream in streams
         if isinstance(stream, dict)
     )
@@ -147,21 +145,124 @@ def probe(path: str) -> ProbeResult:
         if isinstance(stream, dict)
     )
 
-    if video_ok and audio_ok:
-        return ProbeResult(path)
-
-    observed = ", ".join(
-        stream_description(stream) for stream in streams if isinstance(stream, dict)
-    )
     missing: list[str] = []
-    if not video_ok:
-        missing.append("H264 video at 640x480 and 15/1 fps")
+    if not video_codec_ok:
+        missing.append("H264 video")
     if not audio_ok:
         missing.append("AAC audio")
-    return ProbeResult(
-        path,
-        f"missing {' and '.join(missing)}; observed: {observed or 'no streams'}",
-    )
+    if missing:
+        observed = ", ".join(
+            stream_description(stream)
+            for stream in streams
+            if isinstance(stream, dict)
+        )
+        return ProbeResult(
+            path,
+            f"missing {' and '.join(missing)}; observed: {observed or 'no streams'}",
+        )
+
+    # RTSP SDP metadata can initially expose H.264 as 0x0/90000 or infer 30 fps
+    # before the next IDR frame.  Decode a short frame sample instead of trusting
+    # those header estimates.  The supplied assets have long GOPs, so this can
+    # legitimately wait roughly 12-17 seconds for the first decodable frame.
+    frame_command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-rtsp_transport",
+        "tcp",
+        "-rw_timeout",
+        str(read_timeout_microseconds),
+        "-select_streams",
+        "v:0",
+        "-show_frames",
+        "-read_intervals",
+        "%+20",
+        "-show_entries",
+        "frame=width,height,pts_time,best_effort_timestamp_time",
+        "-of",
+        "json",
+        url,
+    ]
+
+    try:
+        frame_probe = subprocess.run(
+            frame_command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return ProbeResult(
+            path,
+            f"frame sampling timed out after {timeout_seconds:g}s: "
+            f"{compact_error(exc.stderr)}",
+        )
+    except OSError as exc:
+        return ProbeResult(path, f"could not run frame probe: {exc}")
+
+    if frame_probe.returncode != 0:
+        return ProbeResult(
+            path,
+            f"frame probe exited {frame_probe.returncode}: "
+            f"{compact_error(frame_probe.stderr)}",
+        )
+
+    try:
+        frame_payload = json.loads(frame_probe.stdout)
+    except json.JSONDecodeError as exc:
+        return ProbeResult(path, f"frame probe returned invalid JSON: {exc}")
+
+    frames = frame_payload.get("frames")
+    if not isinstance(frames, list):
+        return ProbeResult(path, "frame probe did not contain a frames list")
+
+    video_frames = [frame for frame in frames if isinstance(frame, dict)]
+    if len(video_frames) < 10:
+        return ProbeResult(path, f"received only {len(video_frames)} video frame(s)")
+    if any(
+        frame.get("width") != 640 or frame.get("height") != 480
+        for frame in video_frames
+    ):
+        dimensions = sorted(
+            {
+                f"{frame.get('width', '?')}x{frame.get('height', '?')}"
+                for frame in video_frames
+            }
+        )
+        return ProbeResult(
+            path,
+            f"expected 640x480 decoded frames; observed {', '.join(dimensions)}",
+        )
+
+    timestamps: list[float] = []
+    for frame in video_frames:
+        value = frame.get("best_effort_timestamp_time", frame.get("pts_time"))
+        if value is None:
+            continue
+        try:
+            timestamps.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    deltas = [
+        later - earlier
+        for earlier, later in zip(timestamps, timestamps[1:])
+        if later > earlier
+    ]
+    if len(deltas) < 8:
+        return ProbeResult(path, "not enough frame timestamps to verify frame rate")
+
+    median_period = statistics.median(deltas)
+    observed_fps = 1.0 / median_period
+    if not 14.5 <= observed_fps <= 15.5:
+        return ProbeResult(
+            path,
+            f"expected 15 fps decoded frames; observed approximately "
+            f"{observed_fps:.3f} fps",
+        )
+
+    return ProbeResult(path)
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as executor:
