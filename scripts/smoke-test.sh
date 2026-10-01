@@ -238,7 +238,7 @@ def probe(path: str) -> ProbeResult:
 
     timestamps: list[float] = []
     for frame in video_frames:
-        value = frame.get("best_effort_timestamp_time", frame.get("pts_time"))
+        value = frame.get("best_effort_timestamp_time") or frame.get("pts_time")
         if value is None:
             continue
         try:
