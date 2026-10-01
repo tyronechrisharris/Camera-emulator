@@ -68,7 +68,9 @@ for ((camera_number = 1; camera_number <= 50; camera_number++)); do
     -nostdin \
     -loglevel info \
     -rtsp_transport tcp \
-    -rw_timeout "$read_timeout_microseconds" \
+    -timeout "$read_timeout_microseconds" \
+    -analyzeduration 20000000 \
+    -probesize 10000000 \
     -i "$camera_url" \
     -t "$duration_seconds" \
     -map 0:v:0 \
