@@ -190,6 +190,8 @@ With one viewer on each camera, the two source bitrates repeated 25 times each p
 
 The supplied files have long H.264 GOPs. Their longest measured gaps between IDR frames are about 12.3 seconds for `RPM_1.mp4` and 16.7 seconds for `RPM_2.mp4`. A newly connected decoder may therefore wait roughly **12-17 seconds** for its first independently decodable frame even though the RTSP session is already connected. This is expected, not a stalled camera. Reducing that delay requires assets encoded once with a shorter keyframe interval or runtime transcoding; runtime transcoding is deliberately excluded from this Pi-optimized setup.
 
+The compressed timestamps are also preserved across each file loop. FFmpeg clients that remux a stream can report non-monotonic DTS warnings at that seam. The 50-reader wall-clock test crosses both assets' loop boundaries without connection loss or MediaMTX errors, but a downstream recorder that requires a perfectly continuous mux timeline may need the assets prepared once with a continuous timestamp/GOP layout.
+
 ## Security and LAN scope
 
 This configuration is intended for a trusted LAN. It does not configure authentication, TLS or per-camera authorization, and the published ports allow any reachable client to consume streams. Do not expose them directly to the public internet or configure router port forwarding. Prefer binding `CAMERA_BIND_IP` to the Pi's LAN address, restrict access with the host/network firewall, and use a VPN or authenticated reverse proxy when access is needed from outside the LAN.
