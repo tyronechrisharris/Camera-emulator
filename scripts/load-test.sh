@@ -26,11 +26,33 @@ mkdir -p "$log_dir"
 declare -a child_pids=()
 declare -a camera_paths=()
 
+process_running() {
+  local pid="$1"
+  local state
+
+  kill -0 "$pid" 2>/dev/null || return 1
+  state="$(ps -o stat= -p "$pid" 2>/dev/null)" || return 1
+  state="${state//[[:space:]]/}"
+  [[ -n "$state" && "${state:0:1}" != "Z" ]]
+}
+
 terminate_children() {
   local pid
+  local found_running=0
 
   for pid in "${child_pids[@]:-}"; do
-    kill "$pid" 2>/dev/null || true
+    if process_running "$pid"; then
+      kill -TERM "$pid" 2>/dev/null || true
+      found_running=1
+    fi
+  done
+  if ((found_running)); then
+    sleep 1
+  fi
+  for pid in "${child_pids[@]:-}"; do
+    if process_running "$pid"; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
   done
   for pid in "${child_pids[@]:-}"; do
     wait "$pid" 2>/dev/null || true
@@ -72,7 +94,6 @@ for ((camera_number = 1; camera_number <= 50; camera_number++)); do
     -analyzeduration 20000000 \
     -probesize 10000000 \
     -i "$camera_url" \
-    -t "$duration_seconds" \
     -map 0:v:0 \
     -map 0:a:0 \
     -c copy \
@@ -81,19 +102,62 @@ for ((camera_number = 1; camera_number <= 50; camera_number++)); do
   child_pids[camera_number]=$!
 done
 
+printf 'all readers started; holding the concurrent load for %s second(s)\n' \
+  "$duration_seconds"
+sleep "$duration_seconds"
+
+declare -a survived_duration=()
+
+# FFmpeg can exit zero after an early clean RTSP EOF, so its exit status is not
+# sufficient evidence that a reader survived the requested interval.  Check
+# each process after the wall-clock timer, then stop the surviving readers.
+for ((camera_number = 1; camera_number <= 50; camera_number++)); do
+  pid="${child_pids[camera_number]}"
+  if process_running "$pid"; then
+    survived_duration[camera_number]=1
+    kill -INT "$pid" 2>/dev/null || true
+  else
+    survived_duration[camera_number]=0
+  fi
+done
+
+# Give FFmpeg a brief chance to flush logs after SIGINT, then escalate only the
+# readers that did not stop.  The final KILL prevents a broken reader from
+# hanging the test indefinitely.
+sleep 1
+for ((camera_number = 1; camera_number <= 50; camera_number++)); do
+  if ((survived_duration[camera_number])) && \
+      process_running "${child_pids[camera_number]}"; then
+    kill -TERM "${child_pids[camera_number]}" 2>/dev/null || true
+  fi
+done
+sleep 1
+for ((camera_number = 1; camera_number <= 50; camera_number++)); do
+  if ((survived_duration[camera_number])) && \
+      process_running "${child_pids[camera_number]}"; then
+    kill -KILL "${child_pids[camera_number]}" 2>/dev/null || true
+  fi
+done
+
 failure_count=0
 
-# Wait for every PID, including after an earlier reader has failed.  Reporting
-# remains in cam_01..cam_50 order regardless of child completion order.
+# Reap every PID. Reporting remains in cam_01..cam_50 order regardless of child
+# completion order. Signal exit codes are expected for readers stopped after
+# proving that they survived the full interval.
 for ((camera_number = 1; camera_number <= 50; camera_number++)); do
   camera_path="${camera_paths[camera_number]}"
   camera_log="${log_dir}/${camera_path}.log"
   if wait "${child_pids[camera_number]}"; then
-    printf 'PASS %s\n' "$camera_path"
+    child_status=0
   else
     child_status=$?
+  fi
+
+  if ((survived_duration[camera_number])); then
+    printf 'PASS %s\n' "$camera_path"
+  else
     failure_count=$((failure_count + 1))
-    printf 'FAIL %s: ffmpeg exited %s (log: %s)\n' \
+    printf 'FAIL %s: reader exited before the wall-clock interval (status %s; log: %s)\n' \
       "$camera_path" "$child_status" "$camera_log" >&2
   fi
 done
