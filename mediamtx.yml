@@ -1,0 +1,326 @@
+# MediaMTX v1.17.1 configuration for 50 logical camera paths backed by two
+# continuously-looped, packet-copy publishers.
+logLevel: info
+logDestinations: [stdout]
+writeQueueSize: 1024
+
+# Keep the current project's protocol surface while avoiding multicast sockets.
+rtsp: true
+rtspTransports: [udp, tcp]
+rtmp: true
+hls: true
+hlsAlwaysRemux: false
+webrtc: true
+srt: true
+api: false
+metrics: false
+pprof: false
+playback: false
+
+paths:
+  source_01:
+    source: publisher
+    overridePublisher: false
+  source_02:
+    source: publisher
+    overridePublisher: false
+  cam_01:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_02:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_03:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_04:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_05:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_06:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_07:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_08:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_09:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_10:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_11:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_12:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_13:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_14:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_15:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_16:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_17:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_18:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_19:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_20:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_21:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_22:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_23:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_24:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_25:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_26:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_27:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_28:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_29:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_30:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_31:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_32:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_33:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_34:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_35:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_36:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_37:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_38:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_39:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_40:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_41:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_42:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_43:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_44:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_45:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_46:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_47:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_48:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_49:
+    source: rtsp://127.0.0.1:8554/source_01
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp
+  cam_50:
+    source: rtsp://127.0.0.1:8554/source_02
+    sourceOnDemand: true
+    sourceOnDemandStartTimeout: 25s
+    sourceOnDemandCloseAfter: 10s
+    rtspTransport: tcp

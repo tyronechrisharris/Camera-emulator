@@ -1,86 +1,93 @@
-# docker-compose.yml
-# Fixed version that avoids the Windows/Docker bind-mount error by not mounting ./mediamtx.yml.
-# MediaMTX already includes a default /mediamtx.yml inside the image.
+name: camera-emulator
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 15s
+  ulimits:
+    nofile:
+      soft: 65536
+      hard: 65536
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1.17.1
-    container_name: mediamtx
-    restart: unless-stopped
+    <<: *service-defaults
+    image: bluenviron/mediamtx:1.17.1@sha256:9e39256d1ba35f0063700c6f62dd32e6db4592ddd9560d78f409ec451d79b1d8
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: "${CAMERA_ADVERTISE_IP:-192.168.0.55}"
     ports:
-      - "8554:8554"       # RTSP
-      - "1935:1935"       # RTMP
-      - "8888:8888"       # HLS
-      - "8889:8889"       # WebRTC HTTP
-      - "8189:8189/udp"   # WebRTC ICE/UDP
-      - "8890:8890/udp"   # SRT
-      - "8000:8000/udp"   # RTP
-      - "8001:8001/udp"   # RTCP
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8554:8554/tcp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:1935:1935/tcp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8888:8888/tcp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8889:8889/tcp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8189:8189/udp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8890:8890/udp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8000:8000/udp"
+      - "${CAMERA_BIND_IP:-0.0.0.0}:8001:8001/udp"
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
 
-  camera-01:
-    image: lscr.io/linuxserver/ffmpeg:latest
-    container_name: camera-01
-    restart: unless-stopped
+  publisher-rpm-1:
+    <<: *service-defaults
+    image: lscr.io/linuxserver/ffmpeg:8.0.1@sha256:c72eaf699cb104e84c5292ee9b2a65bf3110738dec113d7cfcef02d7bc21b056
     depends_on:
-      - mediamtx
+      mediamtx:
+        condition: service_started
     volumes:
       - ./assets:/assets:ro
     command:
-      - "-re"
-      - "-stream_loop"
+      - -hide_banner
+      - -loglevel
+      - warning
+      - -nostdin
+      - -re
+      - -stream_loop
       - "-1"
-      - "-i"
-      - "/assets/RPM_1.mp4"
-      - "-vf"
-      - "fps=15,scale=640:480,drawtext=text='%{localtime\\:%T.%6N}':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.6:x=10:y=10"
-      - "-c:v"
-      - "libx264"
-      - "-preset"
-      - "veryfast"
-      - "-tune"
-      - "zerolatency"
-      - "-pix_fmt"
-      - "yuv420p"
-      - "-g"
-      - "30"
-      - "-c:a"
+      - -i
+      - /assets/prepared/RPM_1.mp4
+      - -map
+      - 0:v:0
+      - -map
+      - "0:a:0?"
+      - "-c"
       - "copy"
-      - "-rtsp_transport"
-      - "tcp"
-      - "-f"
-      - "rtsp"
-      - "rtsp://mediamtx:8554/cam_01"
+      - -rtsp_transport
+      - tcp
+      - -f
+      - rtsp
+      - rtsp://mediamtx:8554/source_01
 
-  camera-02:
-    image: lscr.io/linuxserver/ffmpeg:latest
-    container_name: camera-02
-    restart: unless-stopped
+  publisher-rpm-2:
+    <<: *service-defaults
+    image: lscr.io/linuxserver/ffmpeg:8.0.1@sha256:c72eaf699cb104e84c5292ee9b2a65bf3110738dec113d7cfcef02d7bc21b056
     depends_on:
-      - mediamtx
+      mediamtx:
+        condition: service_started
     volumes:
       - ./assets:/assets:ro
     command:
-      - "-re"
-      - "-stream_loop"
+      - -hide_banner
+      - -loglevel
+      - warning
+      - -nostdin
+      - -re
+      - -stream_loop
       - "-1"
-      - "-i"
-      - "/assets/RPM_2.mp4"
-      - "-vf"
-      - "fps=15,scale=640:480,drawtext=text='%{localtime\\:%T.%6N}':fontcolor=yellow:fontsize=24:box=1:boxcolor=black@0.6:x=10:y=10"
-      - "-c:v"
-      - "libx264"
-      - "-preset"
-      - "veryfast"
-      - "-tune"
-      - "zerolatency"
-      - "-pix_fmt"
-      - "yuv420p"
-      - "-g"
-      - "30"
-      - "-c:a"
+      - -i
+      - /assets/prepared/RPM_2.mp4
+      - -map
+      - 0:v:0
+      - -map
+      - "0:a:0?"
+      - "-c"
       - "copy"
-      - "-rtsp_transport"
-      - "tcp"
-      - "-f"
-      - "rtsp"
-      - "rtsp://mediamtx:8554/cam_02"
+      - -rtsp_transport
+      - tcp
+      - -f
+      - rtsp
+      - rtsp://mediamtx:8554/source_02
