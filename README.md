@@ -1,11 +1,11 @@
 # Camera Stream Emulator for Raspberry Pi 5
 
-This deployment presents **50 camera endpoints**, `cam_01` through `cam_50`, from a single Raspberry Pi 5. It is optimized for the media already in `assets/`: both files are H.264 at 640x480 and 15 fps, so the runtime copies their compressed video and audio packets instead of decoding and re-encoding them.
+This deployment presents **50 camera endpoints**, `cam_01` through `cam_50`, from a single Raspberry Pi 5. The two tracked source recordings in `assets/` are normalized once to H.264 at 640x480 and 15 fps with a closed, one-second GOP. At runtime, the publishers copy the prepared video and audio packets instead of decoding and re-encoding them.
 
 The design uses only three containers:
 
-- `publisher-rpm-1` continuously loops `assets/RPM_1.mp4` into the internal MediaMTX path `source_01`.
-- `publisher-rpm-2` continuously loops `assets/RPM_2.mp4` into the internal MediaMTX path `source_02`.
+- `publisher-rpm-1` continuously loops `assets/prepared/RPM_1.mp4` into the internal MediaMTX path `source_01`.
+- `publisher-rpm-2` continuously loops `assets/prepared/RPM_2.mp4` into the internal MediaMTX path `source_02`.
 - `mediamtx` exposes `cam_01` through `cam_50`. Odd-numbered cameras proxy `source_01`; even-numbered cameras proxy `source_02`.
 
 The two FFmpeg publishers use stream copy (`-c copy`). MediaMTX creates the 50 public proxies on demand and remuxes the same compressed streams for its output protocols. There are no per-camera FFmpeg containers, H.264 encoders, scaling or frame-rate filters. The old generated timestamp overlay is intentionally absent because adding it would require video transcoding.
@@ -16,7 +16,8 @@ The two FFmpeg publishers use stream copy (`-c copy`). MediaMTX creates the 50 p
 - Docker Engine with the Docker Compose v2 plugin (`docker compose`)
 - A stable LAN address; this deployment uses `192.168.0.55`
 - Wired Gigabit Ethernet is recommended for 50 simultaneous viewers
-- `ffprobe` for the smoke test and `ffmpeg` for the load test
+- Python 3.9 or newer for the validation scripts
+- `ffmpeg` and `ffprobe` for one-time preparation and the verification tests
 
 On Raspberry Pi OS, the test tools are available from the `ffmpeg` package:
 
@@ -52,9 +53,34 @@ CAMERA_ADVERTISE_IP=192.168.0.55
 
 `CAMERA_ADVERTISE_IP` defaults to `192.168.0.55`. It must be an address that WebRTC clients can reach; MediaMTX includes it in its ICE candidates. Update it and recreate the containers if the Pi's LAN address changes. This setting does not change the RTSP, RTMP, HLS or SRT URLs.
 
-Validate the resolved configuration, pull the pinned images and start the emulator:
+## Prepare the short-GOP assets
+
+Before the first start, normalize both tracked source recordings:
 
 ```sh
+./scripts/prepare-assets.sh
+```
+
+This is the only transcoding step. It creates ignored derivatives under `assets/prepared/` using libx264 with a fixed 15-frame, closed GOP (`-g 15 -keyint_min 15 -sc_threshold 0`, with open GOP disabled), 15 fps, 640x480 output and AAC audio. The script writes each file atomically and validates frame rate, dimensions, codecs, the first random-access frame, all internal keyframe gaps and the loop seam. It skips a prepared file when that file is newer than its source, matches the current preparation recipe and still passes validation.
+
+Rebuild both derivatives after changing the preparation settings with:
+
+```sh
+FORCE_PREPARE_ASSETS=1 ./scripts/prepare-assets.sh
+```
+
+If publishers are already running, recreate both publisher containers after preparation. The script replaces each derivative atomically, so an existing FFmpeg process can continue reading its previously opened file until it is restarted:
+
+```sh
+docker compose up -d --no-deps --force-recreate publisher-rpm-1 publisher-rpm-2
+```
+
+The generated MP4s are deliberately not committed. Keep the tracked `assets/RPM_1.mp4` and `assets/RPM_2.mp4` source files, and run the preparation script on every fresh checkout or copy the already validated `assets/prepared/` directory to the deployment host. On a Pi, the one-time libx264 job can use substantial CPU for several minutes and temporarily requires disk space for the source files, completed derivatives and one in-progress temporary file. It does not add any encoder load after deployment starts.
+
+Validate the prepared media and resolved configuration, pull the pinned images and start the emulator:
+
+```sh
+./scripts/validate-assets.sh
 docker compose config --quiet
 docker compose pull
 docker compose up -d
@@ -129,7 +155,9 @@ Run the scripts from the project root. With the supplied `.env` binding, this co
 RTSP_HOST=192.168.0.55 ./scripts/smoke-test.sh
 ```
 
-It verifies that `cam_01` through `cam_50` each report H.264 video at 640x480 and 15 fps plus AAC audio. If `CAMERA_BIND_IP` is omitted or set to `0.0.0.0`, an on-Pi test can instead use the scripts' default `127.0.0.1` host:
+It verifies that `cam_01` through `cam_50` each report H.264 video at 640x480 and 15 fps plus AAC audio. For every path, the test decodes a live sample and also requires independently decodable keyframes to be no more than 1.2 seconds apart. A successful line reports both the measured frame rate and maximum observed keyframe gap.
+
+If `CAMERA_BIND_IP` is omitted or set to `0.0.0.0`, an on-Pi test can instead use the scripts' default `127.0.0.1` host:
 
 ```sh
 ./scripts/smoke-test.sh
@@ -142,12 +170,14 @@ RTSP_HOST=192.168.0.55 \
 RTSP_PORT=8554 \
 SMOKE_TIMEOUT_SECONDS=30 \
 SMOKE_PARALLELISM=10 \
+SMOKE_SAMPLE_SECONDS=5 \
+SMOKE_MAX_KEYFRAME_GAP_SECONDS=1.2 \
 ./scripts/smoke-test.sh
 ```
 
 ## Run the 75-second load test
 
-The load test opens one RTSP/TCP stream-copy reader for each of the 50 cameras. Its default duration is 75 seconds, long enough to cross the loop boundary of both source files:
+The load test opens one RTSP/TCP stream-copy reader for each of the 50 cameras. Its default duration is 75 seconds, long enough to cross the loop boundary of both prepared files:
 
 ```sh
 RTSP_HOST=192.168.0.55 ./scripts/load-test.sh
@@ -182,15 +212,15 @@ docker compose ps
 
 `get_throttled=0x0` means the Pi has not reported present or historical under-voltage or thermal throttling since boot. Investigate power, cooling or network issues if readers fail or containers restart.
 
-## Performance model and join latency
+## Performance model, join latency and loop seam
 
 This design performs file demuxing twice, packet copying in two publishers, and proxy/fan-out work in MediaMTX. It performs **zero video encodes**. Fifty idle public paths do not consume the resources of 50 FFmpeg processes; their on-demand proxies become active when clients read them.
 
-With one viewer on each camera, the two source bitrates repeated 25 times each produce approximately **48.3 Mbit/s of media payload** leaving the Pi, before RTSP/RTP/TCP overhead. MediaMTX also moves comparable traffic through the loopback interface while the 50 aliases are active. Extra viewers add roughly the selected asset's bitrate per viewer, so capacity should be validated for the actual number of clients. The workload is primarily network I/O and packet handling rather than H.264 encoding, which is why it fits the Pi 5 substantially better than 50 transcoding containers.
+With one viewer on each camera, the prepared bitrates repeated 25 times each produce approximately **46 Mbit/s of media payload** leaving the Pi, before RTSP/RTP/TCP overhead. The precise bitrate can vary slightly with the installed x264 version. MediaMTX also moves comparable traffic through the loopback interface while the 50 aliases are active. Extra viewers add roughly the selected asset's bitrate per viewer, so capacity should be validated for the actual number of clients. The workload is primarily network I/O and packet handling rather than H.264 encoding, which is why it fits the Pi 5 substantially better than 50 transcoding containers.
 
-The supplied files have long H.264 GOPs. Their longest measured gaps between IDR frames are about 12.3 seconds for `RPM_1.mp4` and 16.7 seconds for `RPM_2.mp4`. A newly connected decoder may therefore wait roughly **12-17 seconds** for its first independently decodable frame even though the RTSP session is already connected. This is expected, not a stalled camera. Reducing that delay requires assets encoded once with a shorter keyframe interval or runtime transcoding; runtime transcoding is deliberately excluded from this Pi-optimized setup.
+The prepared files use a closed keyframe interval of 15 frames at 15 fps. A newly connected decoder should therefore receive an independently decodable frame within about one second, avoiding the 12-17 second startup delay in the original recordings. This is achieved by the one-time preparation step; runtime transcoding remains deliberately excluded from this Pi-optimized setup.
 
-The compressed timestamps are also preserved across each file loop. FFmpeg clients that remux a stream can report non-monotonic DTS warnings at that seam. The 50-reader wall-clock test crosses both assets' loop boundaries without connection loss or MediaMTX errors, but a downstream recorder that requires a perfectly continuous mux timeline may need the assets prepared once with a continuous timestamp/GOP layout.
+Each prepared file starts on a closed keyframe, and validation includes the final-to-first loop seam in the 1.2-second keyframe-gap limit. FFmpeg's `-stream_loop` still joins finite MP4 timelines, so clients can observe a timestamp adjustment at that seam even though decoding remains independently restartable. The 75-second load test crosses both roughly one-minute file boundaries and must be used to confirm that downstream readers remain connected.
 
 ## Security and LAN scope
 

@@ -12,6 +12,8 @@ export RTSP_HOST="${RTSP_HOST:-127.0.0.1}"
 export RTSP_PORT="${RTSP_PORT:-8554}"
 export SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-30}"
 export SMOKE_PARALLELISM="${SMOKE_PARALLELISM:-10}"
+export SMOKE_SAMPLE_SECONDS="${SMOKE_SAMPLE_SECONDS:-5}"
+export SMOKE_MAX_KEYFRAME_GAP_SECONDS="${SMOKE_MAX_KEYFRAME_GAP_SECONDS:-1.2}"
 
 python3 - <<'PY'
 from __future__ import annotations
@@ -53,6 +55,26 @@ if not 1 <= parallelism <= len(CAMERA_PATHS):
         f"SMOKE_PARALLELISM must be between 1 and {len(CAMERA_PATHS)}"
     )
 
+try:
+    sample_seconds = float(os.environ["SMOKE_SAMPLE_SECONDS"])
+except ValueError:
+    configuration_error("SMOKE_SAMPLE_SECONDS must be a number")
+if sample_seconds < 3:
+    configuration_error("SMOKE_SAMPLE_SECONDS must be at least 3 seconds")
+if sample_seconds >= timeout_seconds:
+    configuration_error(
+        "SMOKE_SAMPLE_SECONDS must be less than SMOKE_TIMEOUT_SECONDS"
+    )
+
+try:
+    maximum_keyframe_gap_seconds = float(
+        os.environ["SMOKE_MAX_KEYFRAME_GAP_SECONDS"]
+    )
+except ValueError:
+    configuration_error("SMOKE_MAX_KEYFRAME_GAP_SECONDS must be a number")
+if maximum_keyframe_gap_seconds <= 0:
+    configuration_error("SMOKE_MAX_KEYFRAME_GAP_SECONDS must be greater than zero")
+
 # This is an additional network-level bound inside ffprobe.  Python's subprocess
 # timeout below remains the authoritative wall-clock bound for every probe.
 read_timeout_microseconds = max(1, int(timeout_seconds * 1_000_000))
@@ -62,6 +84,8 @@ read_timeout_microseconds = max(1, int(timeout_seconds * 1_000_000))
 class ProbeResult:
     path: str
     error: str | None = None
+    observed_fps: float | None = None
+    maximum_keyframe_gap_seconds: float | None = None
 
 
 def compact_error(value: str | bytes | None) -> str:
@@ -161,10 +185,9 @@ def probe(path: str) -> ProbeResult:
             f"missing {' and '.join(missing)}; observed: {observed or 'no streams'}",
         )
 
-    # RTSP SDP metadata can initially expose H.264 as 0x0/90000 or infer 30 fps
-    # before the next IDR frame.  Decode a short frame sample instead of trusting
-    # those header estimates.  The supplied assets have long GOPs, so this can
-    # legitimately wait roughly 12-17 seconds for the first decodable frame.
+    # RTSP SDP metadata can initially expose H.264 as 0x0/90000 or infer an
+    # incorrect frame rate before the next IDR frame. Decode a short live sample
+    # and validate both its actual frame cadence and its random-access cadence.
     frame_command = [
         "ffprobe",
         "-v",
@@ -177,9 +200,12 @@ def probe(path: str) -> ProbeResult:
         "v:0",
         "-show_frames",
         "-read_intervals",
-        "%+20",
+        f"%+{sample_seconds:g}",
         "-show_entries",
-        "frame=width,height,pts_time,best_effort_timestamp_time",
+        (
+            "frame=key_frame,pict_type,width,height,pts_time,"
+            "best_effort_timestamp_time"
+        ),
         "-of",
         "json",
         url,
@@ -262,7 +288,44 @@ def probe(path: str) -> ProbeResult:
             f"{observed_fps:.3f} fps",
         )
 
-    return ProbeResult(path)
+    keyframe_timestamps: list[float] = []
+    for frame in video_frames:
+        if str(frame.get("key_frame")) != "1":
+            continue
+        value = frame.get("best_effort_timestamp_time") or frame.get("pts_time")
+        if value is None:
+            continue
+        try:
+            keyframe_timestamps.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    if len(keyframe_timestamps) < 2:
+        return ProbeResult(
+            path,
+            f"received only {len(keyframe_timestamps)} independently decodable "
+            "keyframe(s)",
+        )
+    keyframe_gaps = [
+        later - earlier
+        for earlier, later in zip(keyframe_timestamps, keyframe_timestamps[1:])
+        if later > earlier
+    ]
+    if not keyframe_gaps:
+        return ProbeResult(path, "not enough keyframe timestamps to verify cadence")
+    observed_maximum_keyframe_gap = max(keyframe_gaps)
+    if observed_maximum_keyframe_gap > maximum_keyframe_gap_seconds + 0.001:
+        return ProbeResult(
+            path,
+            f"expected keyframe gaps no greater than "
+            f"{maximum_keyframe_gap_seconds:.3f}s; observed "
+            f"{observed_maximum_keyframe_gap:.3f}s",
+        )
+
+    return ProbeResult(
+        path,
+        observed_fps=observed_fps,
+        maximum_keyframe_gap_seconds=observed_maximum_keyframe_gap,
+    )
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as executor:
@@ -273,7 +336,10 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as executor:
 failures = tuple(result for result in results if result.error is not None)
 for result in results:
     if result.error is None:
-        print(f"PASS {result.path}")
+        print(
+            f"PASS {result.path}: {result.observed_fps:.3f} fps, "
+            f"max keyframe gap {result.maximum_keyframe_gap_seconds:.3f}s"
+        )
     else:
         print(f"FAIL {result.path}: {result.error}", file=sys.stderr)
 

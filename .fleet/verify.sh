@@ -15,6 +15,8 @@ root = Path.cwd()
 compose_path = root / "docker-compose.yml"
 mediamtx_path = root / "mediamtx.yml"
 readme_path = root / "README.md"
+prepare_path = root / "scripts" / "prepare-assets.sh"
+validate_path = root / "scripts" / "validate-assets.sh"
 
 
 def fail(message: str) -> None:
@@ -22,7 +24,7 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-for path in (compose_path, mediamtx_path, readme_path):
+for path in (compose_path, mediamtx_path, readme_path, prepare_path, validate_path):
     if not path.is_file():
         fail(f"required file is missing: {path.relative_to(root)}")
 
@@ -50,10 +52,16 @@ if "mediamtx" not in service_names:
 if not 2 <= len(service_names) <= 3:
     fail(f"expected 2-3 total services, found {len(service_names)}: {service_names}")
 
+# Only deployment/runtime commands belong in this check. The preparation
+# script intentionally performs each source transcode once before containers
+# start; neither publisher is allowed to contain an encoder or video filter.
+runtime_paths = (
+    compose_path,
+    root / "scripts" / "smoke-test.sh",
+    root / "scripts" / "load-test.sh",
+)
 runtime_text = "\n".join(
-    path.read_text(encoding="utf-8")
-    for path in [compose_path, *sorted((root / "scripts").glob("*"))]
-    if path.is_file()
+    path.read_text(encoding="utf-8") for path in runtime_paths if path.is_file()
 )
 
 for forbidden in (
@@ -71,8 +79,8 @@ if not re.search(r"(?:-c(?::[va])?\s*[\"']?\s*copy|[\"']-c(?::[va])?[\"']\s*\n\s
     fail("publisher command must explicitly use FFmpeg stream copy (-c copy or -c:v/-c:a copy)")
 
 for asset in ("RPM_1.mp4", "RPM_2.mp4"):
-    if asset not in runtime_text:
-        fail(f"publisher configuration does not reference {asset}")
+    if f"/assets/prepared/{asset}" not in compose:
+        fail(f"publisher configuration does not reference prepared asset {asset}")
 
 if not re.search(r"\./assets\s*:/assets\s*:ro\b", compose):
     fail("assets must be mounted read-only at /assets")
@@ -88,6 +96,29 @@ if re.search(r"(?:image:\s*\S*:latest\b|image:\s*\S+\n)", compose):
             tail = image.rsplit("/", 1)[-1]
             if image.endswith(":latest") or (":" not in tail and "@sha256:" not in image):
                 fail(f"container image is not pinned: {image}")
+
+prepare = prepare_path.read_text(encoding="utf-8")
+for required_pattern in (
+    r"(?m)^\s+-c:v libx264\s*\\?$",
+    r"(?m)^\s+-g 15\s*\\?$",
+    r"(?m)^\s+-keyint_min 15\s*\\?$",
+    r"(?m)^\s+-sc_threshold 0\s*\\?$",
+    r"open-gop=0",
+    r"fps=15",
+    r"scale=640:480",
+):
+    if not re.search(required_pattern, prepare):
+        fail(f"asset preparation is missing required setting {required_pattern!r}")
+
+validate = validate_path.read_text(encoding="utf-8")
+if "MAX_KEYFRAME_GAP_SECONDS = 1.2" not in validate:
+    fail("prepared-asset validation must enforce a 1.2-second keyframe-gap limit")
+if "SMOKE_MAX_KEYFRAME_GAP_SECONDS" not in (root / "scripts" / "smoke-test.sh").read_text(encoding="utf-8"):
+    fail("live smoke test must verify keyframe cadence")
+
+gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+if "assets/prepared/" not in gitignore:
+    fail("generated prepared assets must remain ignored")
 
 # Fifty explicit paths make the externally observable contract unambiguous and
 # let deployment checks enumerate the same stable URLs.
@@ -142,6 +173,9 @@ if command -v ffprobe >/dev/null 2>&1; then
       -of csv=p=0 "$asset")"
     [[ "$values" == h264,640,480,15/1 ]]
   done
+  if [[ -f assets/prepared/RPM_1.mp4 && -f assets/prepared/RPM_2.mp4 ]]; then
+    scripts/validate-assets.sh
+  fi
 fi
 
 printf '%s\n' 'fleet verifier passed'

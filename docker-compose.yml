@@ -49,7 +49,7 @@ services:
       - -stream_loop
       - "-1"
       - -i
-      - /assets/RPM_1.mp4
+      - /assets/prepared/RPM_1.mp4
       - -map
       - 0:v:0
       - -map
@@ -79,7 +79,7 @@ services:
       - -stream_loop
       - "-1"
       - -i
-      - /assets/RPM_2.mp4
+      - /assets/prepared/RPM_2.mp4
       - -map
       - 0:v:0
       - -map
